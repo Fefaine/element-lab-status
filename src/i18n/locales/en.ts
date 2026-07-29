@@ -11,6 +11,7 @@ export const en: TranslationKeys = {
     "statusPicker.save": "Save",
     "statusPicker.saveDisabled": "Select an emoji first",
     "statusPicker.clear": "Clear status",
+    "statusPicker.privacyNotice": "Your status is visible to everyone in your rooms",
 
     // Emoji Grid
     "emojiGrid.label": "Status emoji options",

@@ -46,6 +46,19 @@ To drop this into element-web:
 4. Wire `StatusDisplay` into `DisambiguatedProfile`, `MemberTile`, `UserInfo`
 5. Optionally persist duration to account data (`m.status_duration`) for cross-device sync
 
+## Follow-up: Federation Privacy
+
+MSC4426 extended profile fields are currently visible across federation — any server in a shared room can read a user's status. There is no per-field visibility control in the spec.
+
+**This is a concern for enterprise deployments** where status text may contain internal context (project names, meeting topics, etc.) that should not leak to external federated servers.
+
+**Proposed follow-up:** A mechanism to disable or restrict specific extended profile fields from federated profile responses, allowing homeserver admins to preserve confidentiality. This could take the form of:
+- Server-side configuration to strip `org.matrix.msc4426.*` fields from federated responses
+- A new MSC proposing scoped profile field visibility (e.g., "local-only" fields)
+- Per-user opt-in/opt-out for federating status information
+
+A privacy notice has been added to the StatusPicker UI (`statusPicker.privacyNotice`) informing users that their status is visible to everyone in their rooms. This ensures transparency while the protocol-level solution is pending.
+
 ---
 
 # User Stories

@@ -18,6 +18,7 @@ export interface TranslationKeys {
     "statusPicker.save": string;
     "statusPicker.saveDisabled": string;
     "statusPicker.clear": string;
+    "statusPicker.privacyNotice": string;
 
     // Emoji Grid
     "emojiGrid.label": string;

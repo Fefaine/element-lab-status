@@ -146,6 +146,10 @@ export function StatusPicker({ currentStatus, onSave, onClear, onClose }: Status
 
             <DurationPicker duration={duration} onChange={setDuration} />
 
+            <p className="status-picker__privacy-notice" aria-live="polite">
+                {t("statusPicker.privacyNotice")}
+            </p>
+
             <div className="status-picker__actions">
                 {currentStatus && (
                     <button

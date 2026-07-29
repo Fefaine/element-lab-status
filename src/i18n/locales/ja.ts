@@ -11,6 +11,7 @@ export const ja: TranslationKeys = {
     "statusPicker.save": "保存",
     "statusPicker.saveDisabled": "まず絵文字を選択してください",
     "statusPicker.clear": "ステータスをクリア",
+    "statusPicker.privacyNotice": "あなたのステータスはルームの全メンバーに表示されます",
 
     // Emoji Grid
     "emojiGrid.label": "ステータス絵文字オプション",
