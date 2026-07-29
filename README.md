@@ -17,35 +17,6 @@ The UI components (StatusPicker, EmojiGrid, DurationPicker, StatusDisplay), i18n
 
 If contributing upstream, this code would fall under Element's [CLA](https://cla-assistant.io/element-hq/element-web) and the repository's AGPL-3.0 license.
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  UI Layer (our enhancements)                            │
-│  StatusPicker · EmojiGrid · DurationPicker · StatusDisplay │
-└────────────────────────┬────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│  Hook Layer                                             │
-│  useUserStatus(client) · useOtherUserStatus(client, id) │
-└────────────────────────┬────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│  Utils Layer (mirrors Element's utils/userStatus.ts)    │
-│  fetchUserStatus · setUserStatusOnServer · clearUserStatusOnServer │
-│  validateUserStatus · validateMCallStatus · userStatusFromProfile  │
-└────────────────────────┬────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│  IMatrixClient interface                                │
-│  MockMatrixClient (demo) ← swap → real MatrixClient     │
-│                                                         │
-│  Server API:                                            │
-│    org.matrix.msc4426.status  → { emoji, text }         │
-│    org.matrix.msc4426.call    → { call_joined_ts }      │
-└─────────────────────────────────────────────────────────┘
-```
-
 ## Protocol: MSC4426 Extended Profiles
 
 Status is stored on the Matrix homeserver as extended profile properties:
