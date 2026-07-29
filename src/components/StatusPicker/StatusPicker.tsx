@@ -4,7 +4,7 @@ import {
     STATUS_EMOJI_PRESETS,
     StatusDuration,
     StatusEmoji,
-    UserStatus,
+    UserStatusWithDuration,
 } from "../../types/status";
 import { useTranslation } from "../../i18n";
 import { EmojiGrid } from "./EmojiGrid";
@@ -13,9 +13,9 @@ import "./StatusPicker.css";
 
 interface StatusPickerProps {
     /** Current status, if any */
-    currentStatus: UserStatus | null;
+    currentStatus: UserStatusWithDuration | null;
     /** Called when user saves a new status */
-    onSave: (status: UserStatus) => void;
+    onSave: (status: UserStatusWithDuration) => void;
     /** Called when user clears their status */
     onClear: () => void;
     /** Called when picker is dismissed */
@@ -25,7 +25,7 @@ interface StatusPickerProps {
 /**
  * Flyout panel for setting user status.
  * Includes emoji selection, custom text input, and duration picker.
- * Designed to appear from the profile picture area.
+ * Sets status via MSC4426 extended profiles with client-side duration.
  */
 export function StatusPicker({ currentStatus, onSave, onClear, onClose }: StatusPickerProps) {
     const { t } = useTranslation();
@@ -47,7 +47,7 @@ export function StatusPicker({ currentStatus, onSave, onClear, onClose }: Status
     const handleSave = useCallback(() => {
         if (!selectedEmoji) return;
 
-        const newStatus: UserStatus = {
+        const newStatus: UserStatusWithDuration = {
             emoji: selectedEmoji,
             text: statusText.trim(),
             duration,

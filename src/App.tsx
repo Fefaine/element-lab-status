@@ -1,9 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { StatusPicker } from "./components/StatusPicker";
 import { StatusDisplay } from "./components/StatusDisplay";
 import { useUserStatus } from "./hooks/useUserStatus";
 import { I18nProvider, useTranslation } from "./i18n";
 import { Locale } from "./i18n/types";
+import { MockMatrixClient } from "./utils/mockMatrixClient";
+import { UserStatus } from "./types/status";
 import "./App.css";
 
 /**
@@ -11,7 +13,11 @@ import "./App.css";
  */
 function AppContent() {
     const { t, locale, setLocale } = useTranslation();
-    const { status, setStatus, clearStatus } = useUserStatus();
+
+    // In a real Element integration, this comes from MatrixClientContext.
+    // Here we use a mock that stores data in localStorage.
+    const client = useMemo(() => new MockMatrixClient(), []);
+    const { status, setStatus, clearStatus, loading } = useUserStatus(client);
     const [pickerOpen, setPickerOpen] = useState(false);
 
     const togglePicker = useCallback(() => {
@@ -25,6 +31,17 @@ function AppContent() {
         [setLocale]
     );
 
+    // Demo statuses for other users (simulating MSC4426 server responses)
+    const otherStatuses: Record<string, UserStatus> = {
+        alex: { emoji: "📅", text: "In a meeting until 3pm" },
+        morgan: { emoji: "🏖️", text: "Out of office - back Monday" },
+        sam: { emoji: "📞", text: "On a call" },
+    };
+
+    if (loading) {
+        return <div className="app">Loading...</div>;
+    }
+
     return (
         <div className="app">
             <header className="app__header">
@@ -37,6 +54,14 @@ function AppContent() {
                         rel="noopener noreferrer"
                     >
                         element-meta#2457
+                    </a>
+                    {" "}— powered by{" "}
+                    <a
+                        href="https://github.com/matrix-org/matrix-spec-proposals/pull/4426"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        MSC4426
                     </a>
                 </p>
                 <div className="app__locale-switcher">
@@ -60,7 +85,7 @@ function AppContent() {
             </header>
 
             <main className="app__main">
-                {/* Simulated user profile area */}
+                {/* User profile area — click avatar to set status */}
                 <section className="profile-area" aria-label={t("profile.ariaLabel")}>
                     <div className="profile-area__avatar-container">
                         <button
@@ -105,7 +130,7 @@ function AppContent() {
                     )}
                 </section>
 
-                {/* Simulated chat member list showing statuses */}
+                {/* Room member list — shows other users' MSC4426 statuses */}
                 <section className="member-list" aria-label={t("memberList.title")}>
                     <h2 className="member-list__title">{t("memberList.title")}</h2>
                     <ul className="member-list__list">
@@ -117,28 +142,17 @@ function AppContent() {
                         <li className="member-list__item">
                             <span className="member-list__avatar">AS</span>
                             <span className="member-list__name">Alex Smith</span>
-                            <StatusDisplay
-                                status={{
-                                    emoji: "📅",
-                                    text: "In a meeting until 3pm",
-                                    duration: { type: "always" },
-                                    setAt: new Date(),
-                                }}
-                                size="small"
-                            />
+                            <StatusDisplay status={otherStatuses.alex} size="small" />
                         </li>
                         <li className="member-list__item">
                             <span className="member-list__avatar">MJ</span>
                             <span className="member-list__name">Morgan Jones</span>
-                            <StatusDisplay
-                                status={{
-                                    emoji: "🏖️",
-                                    text: "Out of office - back Monday",
-                                    duration: { type: "always" },
-                                    setAt: new Date(),
-                                }}
-                                size="small"
-                            />
+                            <StatusDisplay status={otherStatuses.morgan} size="small" />
+                        </li>
+                        <li className="member-list__item">
+                            <span className="member-list__avatar">SP</span>
+                            <span className="member-list__name">Sam Park</span>
+                            <StatusDisplay status={otherStatuses.sam} size="small" />
                         </li>
                         <li className="member-list__item">
                             <span className="member-list__avatar">CP</span>

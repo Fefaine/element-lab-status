@@ -1,5 +1,31 @@
 /**
- * Represents the duration mode for a user status.
+ * MSC4426 User Status type.
+ * Matches the shape used by Element's @element-hq/web-shared-components UserStatus.
+ * The protocol stores { emoji: string, text: string } on the extended profile
+ * at the key "org.matrix.msc4426.status".
+ */
+export interface UserStatus {
+    /** A single emoji grapheme */
+    emoji: string;
+    /** Status text, max 256 bytes UTF-8 */
+    text: string;
+}
+
+/**
+ * Extended status with client-side duration metadata.
+ * This is our enhancement over Element's base implementation — we add
+ * duration/expiry so statuses can auto-clear. The duration is stored
+ * locally (not sent to the server) since MSC4426 doesn't define it.
+ */
+export interface UserStatusWithDuration extends UserStatus {
+    /** When the status should be displayed (client-side only) */
+    duration: StatusDuration;
+    /** Timestamp when the status was set (client-side only) */
+    setAt: Date;
+}
+
+/**
+ * Represents the duration mode for a user status (client-side enhancement).
  */
 export type StatusDuration =
     | { type: "always" }
@@ -10,35 +36,37 @@ export type StatusDuration =
  * A preset emoji option for quick status selection.
  */
 export interface StatusEmoji {
-    /** The emoji character */
+    /** The emoji character (single grapheme) */
     emoji: string;
     /** i18n key for the accessible label */
     labelKey: string;
     /** Accessible label fallback (English) */
     label: string;
-    /** Default status text suggestion (uses label as default) */
+    /** Default status text suggestion */
     defaultText: string;
 }
 
 /**
- * The user's current status state.
+ * MSC4426 defines the maximum length of a status to be 256 bytes of UTF-8.
+ * Matches Element's implementation.
  */
-export interface UserStatus {
-    /** Selected emoji icon */
-    emoji: string;
-    /** Custom status text (same max length as emoji count constraint) */
-    text: string;
-    /** When the status should be displayed */
-    duration: StatusDuration;
-    /** Timestamp when the status was set */
-    setAt: Date;
-}
+export const MAX_STATUS_TEXT_BYTES = 256;
 
 /**
- * Maximum length for the custom status text.
- * Matches M365 Teams behavior.
+ * Character-based limit for the UI input field.
+ * This is a practical approximation — the real constraint is 256 UTF-8 bytes.
  */
-export const MAX_STATUS_TEXT_LENGTH = 280;
+export const MAX_STATUS_TEXT_LENGTH = 256;
+
+/**
+ * The MSC4426 extended profile key for user status.
+ */
+export const MSC4426_STATUS_KEY = "org.matrix.msc4426.status";
+
+/**
+ * The MSC4426 extended profile key for call status.
+ */
+export const MSC4426_CALL_KEY = "org.matrix.msc4426.call";
 
 /**
  * Preset emoji options similar to M365 Teams.

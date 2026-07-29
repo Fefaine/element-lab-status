@@ -1,9 +1,183 @@
-import { MAX_STATUS_TEXT_LENGTH, StatusDuration, UserStatus } from "../types/status";
+import {
+    MAX_STATUS_TEXT_BYTES,
+    MAX_STATUS_TEXT_LENGTH,
+    MSC4426_CALL_KEY,
+    MSC4426_STATUS_KEY,
+    StatusDuration,
+    UserStatus,
+    UserStatusWithDuration,
+} from "../types/status";
+import { IMatrixClient } from "../types/matrixClient";
+
+// Static Intl.Segmenter for grabbing the first grapheme of a user status emoji.
+// Matches Element's implementation for single-grapheme enforcement.
+const intlSegmenter = new Intl.Segmenter();
+
+// ─── Validation ─────────────────────────────────────────────────────────────
 
 /**
- * Checks whether a status is currently active based on its duration settings.
+ * Checks if a given text is within the MSC4426 maximum allowed length (256 bytes UTF-8).
+ * Matches Element's `userStatusTextWithinMaxLength`.
  */
-export function isStatusActive(status: UserStatus): boolean {
+export function userStatusTextWithinMaxLength(text: string): boolean {
+    const textEncoder = new TextEncoder();
+    return textEncoder.encode(text).length <= MAX_STATUS_TEXT_BYTES;
+}
+
+/**
+ * Extracts the first grapheme from a string using Intl.Segmenter.
+ * Ensures emoji is exactly one grapheme cluster (matches Element's validation).
+ */
+export function extractFirstGrapheme(str: string): string | undefined {
+    const segments = [...intlSegmenter.segment(str)];
+    return segments[0]?.segment;
+}
+
+/**
+ * Validates a raw object from the server profile into a UserStatus.
+ * Mirrors Element's `validateUserStatus` from utils/userStatus.ts.
+ */
+export function validateUserStatus(rawUserStatus: unknown): UserStatus | undefined {
+    if (typeof rawUserStatus !== "object" || rawUserStatus === null) {
+        return undefined;
+    }
+
+    const obj = rawUserStatus as Record<string, unknown>;
+
+    if (typeof obj.emoji !== "string" || !obj.emoji) {
+        return undefined;
+    }
+    if (typeof obj.text !== "string" || !obj.text) {
+        return undefined;
+    }
+
+    // Enforce single grapheme for emoji
+    const emoji = extractFirstGrapheme(obj.emoji);
+    if (!emoji) return undefined;
+
+    // Truncate text if it exceeds max bytes
+    const text = userStatusTextWithinMaxLength(obj.text)
+        ? obj.text
+        : `${obj.text.slice(0, MAX_STATUS_TEXT_BYTES)}…`;
+
+    return { emoji, text };
+}
+
+/**
+ * Validates a raw m.call status from the server.
+ * Returns a UserStatus representing "On a call" if the user is currently in a call.
+ * Mirrors Element's `validateMCallStatus`.
+ */
+export function validateMCallStatus(rawCallStatus: unknown): UserStatus | undefined {
+    if (!rawCallStatus || typeof rawCallStatus !== "object") return undefined;
+
+    const obj = rawCallStatus as Record<string, unknown>;
+    if (typeof obj.call_joined_ts !== "number") return undefined;
+    if (obj.call_joined_ts > 0) {
+        return { emoji: "📞", text: "On a call" };
+    }
+    return undefined;
+}
+
+/**
+ * Takes both MSC4426 user status fields and returns a unified UserStatus.
+ * Custom status takes precedence over call status.
+ * Mirrors Element's `userStatusFromProfile`.
+ */
+export function userStatusFromProfile(
+    userStatus: unknown,
+    callStatus: unknown
+): UserStatus | undefined {
+    const validatedUserStatus = validateUserStatus(userStatus);
+    if (validatedUserStatus) return validatedUserStatus;
+
+    const validatedCallStatus = validateMCallStatus(callStatus);
+    if (validatedCallStatus) return validatedCallStatus;
+
+    return undefined;
+}
+
+// ─── Server Operations (MSC4426) ────────────────────────────────────────────
+
+/**
+ * Fetch the MSC4426 user status of a given user.
+ * Checks both org.matrix.msc4426.status and org.matrix.msc4426.call.
+ * Mirrors Element's `fetchUserStatus`.
+ */
+export async function fetchUserStatus(
+    client: IMatrixClient,
+    userId: string
+): Promise<UserStatus | undefined> {
+    if ((await client.doesServerSupportExtendedProfiles()) === false) {
+        return undefined;
+    }
+
+    let rawUserStatus: unknown;
+    let rawCallStatus: unknown;
+
+    try {
+        rawUserStatus = await client.getExtendedProfileProperty(userId, MSC4426_STATUS_KEY);
+    } catch {
+        // User may not have a status set (M_NOT_FOUND)
+    }
+
+    try {
+        rawCallStatus = await client.getExtendedProfileProperty(userId, MSC4426_CALL_KEY);
+    } catch {
+        // User may not have call status
+    }
+
+    return userStatusFromProfile(rawUserStatus, rawCallStatus);
+}
+
+/**
+ * Sets the MSC4426 user status on the server.
+ * Mirrors Element's `setUserStatus`.
+ */
+export async function setUserStatusOnServer(
+    client: IMatrixClient,
+    userStatus: UserStatus
+): Promise<void> {
+    // Enforce single grapheme emoji
+    const emoji = extractFirstGrapheme(userStatus.emoji);
+    if (!emoji) throw new Error("Invalid emoji: must be a single grapheme");
+
+    // Enforce text length
+    if (!userStatusTextWithinMaxLength(userStatus.text)) {
+        throw new Error("Status text exceeds maximum 256 UTF-8 bytes");
+    }
+
+    await client.setExtendedProfileProperty(MSC4426_STATUS_KEY, {
+        emoji,
+        text: userStatus.text,
+    });
+}
+
+/**
+ * Clears the MSC4426 user status on the server.
+ * Mirrors Element's `clearUserStatus`.
+ */
+export async function clearUserStatusOnServer(client: IMatrixClient): Promise<void> {
+    await client.setExtendedProfileProperty(MSC4426_STATUS_KEY, null);
+}
+
+/**
+ * Sets or clears the user's call status.
+ * Mirrors Element's `setUserOnCall`.
+ */
+export async function setUserOnCall(client: IMatrixClient, onCall: boolean): Promise<void> {
+    await client.setExtendedProfileProperty(
+        MSC4426_CALL_KEY,
+        onCall ? { call_joined_ts: Date.now() } : null
+    );
+}
+
+// ─── Duration Helpers (our enhancement, client-side only) ───────────────────
+
+/**
+ * Checks whether a status with duration is currently active.
+ */
+export function isStatusActive(status: UserStatusWithDuration): boolean {
     const now = new Date();
 
     switch (status.duration.type) {
@@ -27,18 +201,19 @@ function isValidDate(date: Date): boolean {
  * Sanitizes a status text string: trims, enforces max length,
  * and strips control characters that could be used for spoofing.
  */
-function sanitizeText(text: string): string {
-    // Remove control characters (except common whitespace)
-    // This prevents bidi override attacks and invisible character injection
-    const cleaned = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u200B-\u200F\u2028-\u202E\uFEFF]/g, "");
+export function sanitizeText(text: string): string {
+    const cleaned = text.replace(
+        /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u200B-\u200F\u2028-\u202E\uFEFF]/g,
+        ""
+    );
     return cleaned.trim().slice(0, MAX_STATUS_TEXT_LENGTH);
 }
 
 /**
- * Validates a parsed object has the shape of a UserStatus.
- * Guards against tampered localStorage or malicious status_msg payloads.
+ * Validates a parsed object has the shape of a UserStatusWithDuration.
+ * Used for validating localStorage data.
  */
-export function isValidUserStatus(obj: unknown): obj is UserStatus {
+export function isValidUserStatusWithDuration(obj: unknown): obj is UserStatusWithDuration {
     if (!obj || typeof obj !== "object") return false;
 
     const candidate = obj as Record<string, unknown>;
@@ -70,16 +245,12 @@ export function isValidUserStatus(obj: unknown): obj is UserStatus {
     return false;
 }
 
-/**
- * Translation function signature used by formatDuration.
- * Matches the `t` function from useTranslation().
- */
+// ─── Duration Formatting ────────────────────────────────────────────────────
+
 type TranslateFn = (key: string, params?: Record<string, string>) => string;
 
 /**
  * Formats the duration into a human-readable string for display.
- * Accepts an optional translation function for i18n support.
- * Falls back to English if no translation function is provided.
  */
 export function formatDuration(duration: StatusDuration, t?: TranslateFn): string {
     const translate = t ?? defaultTranslate;
@@ -99,9 +270,6 @@ export function formatDuration(duration: StatusDuration, t?: TranslateFn): strin
     }
 }
 
-/**
- * Fallback translate function when no i18n context is available.
- */
 function defaultTranslate(key: string, params?: Record<string, string>): string {
     const defaults: Record<string, string> = {
         "duration.display.always": "Until you clear it",
@@ -119,10 +287,6 @@ function defaultTranslate(key: string, params?: Record<string, string>): string 
     return value;
 }
 
-/**
- * Formats a date into a short, readable string.
- * Uses locale-aware date/time formatting via Intl APIs.
- */
 function formatDateTime(date: Date, translate: TranslateFn): string {
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
@@ -142,97 +306,4 @@ function formatDateTime(date: Date, translate: TranslateFn): string {
     });
 
     return `${dateStr} ${timeStr}`;
-}
-
-/**
- * Serializes a UserStatus to the m.presence status_msg format.
- * Uses JSON encoding to avoid delimiter collision issues with user-provided text.
- * The JSON is compact and safe for the status_msg field.
- */
-export function serializeStatus(status: UserStatus): string {
-    const payload = {
-        e: status.emoji,
-        t: sanitizeText(status.text),
-        d: serializeDuration(status.duration),
-    };
-    return JSON.stringify(payload);
-}
-
-/**
- * Deserializes a status_msg string back into a UserStatus object.
- * Validates all fields from the untrusted input.
- */
-export function deserializeStatus(statusMsg: string): UserStatus | null {
-    if (!statusMsg || statusMsg.length > 1024) return null; // Reject oversized payloads
-
-    let payload: unknown;
-    try {
-        payload = JSON.parse(statusMsg);
-    } catch {
-        return null; // Malformed JSON
-    }
-
-    if (!payload || typeof payload !== "object") return null;
-
-    const obj = payload as Record<string, unknown>;
-
-    // Validate emoji field
-    if (typeof obj.e !== "string" || obj.e.length === 0 || obj.e.length > 10) return null;
-
-    // Validate text field
-    if (typeof obj.t !== "string") return null;
-    const text = sanitizeText(obj.t);
-
-    // Validate duration
-    const duration = deserializeDuration(obj.d);
-    if (!duration) return null;
-
-    return {
-        emoji: obj.e,
-        text,
-        duration,
-        setAt: new Date(),
-    };
-}
-
-function serializeDuration(duration: StatusDuration): unknown {
-    switch (duration.type) {
-        case "always":
-            return { type: "always" };
-        case "until":
-            return { type: "until", end: duration.endTime.toISOString() };
-        case "range":
-            return {
-                type: "range",
-                start: duration.startTime.toISOString(),
-                end: duration.endTime.toISOString(),
-            };
-    }
-}
-
-function deserializeDuration(raw: unknown): StatusDuration | null {
-    if (!raw || typeof raw !== "object") return null;
-
-    const obj = raw as Record<string, unknown>;
-
-    switch (obj.type) {
-        case "always":
-            return { type: "always" };
-        case "until": {
-            if (typeof obj.end !== "string") return null;
-            const endTime = new Date(obj.end);
-            if (!isValidDate(endTime)) return null;
-            return { type: "until", endTime };
-        }
-        case "range": {
-            if (typeof obj.start !== "string" || typeof obj.end !== "string") return null;
-            const startTime = new Date(obj.start);
-            const endTime = new Date(obj.end);
-            if (!isValidDate(startTime) || !isValidDate(endTime)) return null;
-            if (endTime <= startTime) return null; // End must be after start
-            return { type: "range", startTime, endTime };
-        }
-        default:
-            return null;
-    }
 }

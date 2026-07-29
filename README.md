@@ -1,191 +1,238 @@
 # element-lab-status
-Experimental tests and proofs of concept for potential element status features. This repository is a playground for exploring ideas, validating assumptions, and seeing what works (or doesn't). No roadmap, no guarantees — just curiosity-driven experimentation.
 
-# LocalStorage
+Experimental UI for Element's user status feature, extending the official MSC4426 implementation ([element-web PR #32991](https://github.com/element-hq/element-web/pull/32991)) with a visual emoji picker, duration controls, and accessible flyout UX.
+
+This is a standalone React prototype that hooks into Element's MSC4426 architecture via an `IMatrixClient` interface. Swap the included `MockMatrixClient` (localStorage-backed) for the real `MatrixClient` from `matrix-js-sdk` to run inside Element.
+
+## Architecture
 
 ```
-// In a real integration, this would call:
-// matrixClient.setPresence({ presence: "online", status_msg: serializeStatus(newStatus) });
+┌─────────────────────────────────────────────────────────┐
+│  UI Layer (our enhancements)                            │
+│  StatusPicker · EmojiGrid · DurationPicker · StatusDisplay │
+└────────────────────────┬────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────┐
+│  Hook Layer                                             │
+│  useUserStatus(client) · useOtherUserStatus(client, id) │
+└────────────────────────┬────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────┐
+│  Utils Layer (mirrors Element's utils/userStatus.ts)    │
+│  fetchUserStatus · setUserStatusOnServer · clearUserStatusOnServer │
+│  validateUserStatus · validateMCallStatus · userStatusFromProfile  │
+└────────────────────────┬────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────┐
+│  IMatrixClient interface                                │
+│  MockMatrixClient (demo) ← swap → real MatrixClient     │
+│                                                         │
+│  Server API:                                            │
+│    org.matrix.msc4426.status  → { emoji, text }         │
+│    org.matrix.msc4426.call    → { call_joined_ts }      │
+└─────────────────────────────────────────────────────────┘
 ```
 
-For the feature to actually work in Element, localStorage needs to get replaced with the Matrix protocol's m.presence event. That event broadcasts your status_msg field to everyone in your rooms via the homeserver. The serializeStatus/deserializeStatus utilities are already built for this — they encode the emoji, text, and duration into a JSON string that fits in status_msg.
+## Protocol: MSC4426 Extended Profiles
 
+Status is stored on the Matrix homeserver as extended profile properties:
 
-# User stories implemented
-Stories are based on this request https://github.com/element-hq/element-meta/issues/2457
+- **`org.matrix.msc4426.status`** — `{ emoji: "🔴", text: "Busy working" }`
+- **`org.matrix.msc4426.call`** — `{ call_joined_ts: 1719500000000 }` (auto-set when joining calls)
 
-## US-1: Set a status via profile picture flyout 
+Constraints (matching Element's implementation):
+- Emoji must be exactly **one grapheme** (validated via `Intl.Segmenter`)
+- Text is limited to **256 bytes UTF-8** (not characters)
+- Custom status takes precedence over call status
+
+### Our enhancement: client-side duration
+
+MSC4426 doesn't define expiry/duration. We add this as a client-side feature:
+- Duration metadata (always / until / range) is stored in localStorage
+- The hook auto-clears status on the server when the local timer expires
+- Other users see the status but not the duration — it's a personal UX feature
+
+## Integration with Element
+
+To drop this into element-web:
+
+1. Replace `MockMatrixClient` → `useMatrixClientContext()` from Element
+2. Replace our `I18nProvider` → Element's `_t()` / `_td()` system
+3. Place `StatusPicker` in the user menu or profile panel
+4. Wire `StatusDisplay` into `DisambiguatedProfile`, `MemberTile`, `UserInfo`
+5. Optionally persist duration to account data (`m.status_duration`) for cross-device sync
+
+---
+
+# User Stories
+
+Based on [element-meta#2457](https://github.com/element-hq/element-meta/issues/2457)
+
+## US-1: Set a status via profile picture flyout
 ```
-As a user, 
-I can click my profile avatar to open a flyout menu where I set my status, 
+As a user,
+I can click my profile avatar to open a flyout menu where I set my status,
 so that I don't need to change my display name to communicate availability.
 ```
-## US-2: Select a status emoji from presets 
+
+## US-2: Select a status emoji from presets
 ```
-As a user, 
-I can pick from a grid of predefined emoji icons (Available, Busy, DND, BRB, Out of Office, In a Meeting, etc.), 
+As a user,
+I can pick from a grid of predefined emoji icons (Available, Busy, DND, BRB, Out of Office, In a Meeting, etc.),
 so that I can quickly indicate my state without searching for emojis.
 ```
-## US-3: Write a custom status message 
+
+## US-3: Write a custom status message
 ```
-As a user, 
-I can type a free-text message (up to 280 characters) alongside my chosen emoji, 
+As a user,
+I can type a free-text message (up to 256 bytes UTF-8) alongside my chosen emoji,
 so that I can provide context beyond just the icon (e.g., "Back at 3pm" or "On parental leave until March").
 ```
-## US-4: Choose status duration 
+
+## US-4: Choose status duration
 ```
-As a user, 
-I can set how long my status is displayed — always, until a specific time, or during a custom time range — 
+As a user,
+I can set how long my status is displayed — always, until a specific time, or during a custom time range —
 so that my status auto-clears without me remembering to do it manually.
 ```
-## US-5: See my own current status 
+
+## US-5: See my own current status
 ```
-As a user, 
-I can see my active status displayed next to my profile picture and in my profile area, 
+As a user,
+I can see my active status displayed next to my profile picture and in my profile area,
 so that I have confirmation of what others see.
 ```
-## US-6: View other users' status in the member list 
+
+## US-6: View other users' status in the member list
 ```
-As a user, 
-I can see a status emoji badge next to each room member who has set a status, 
+As a user,
+I can see a status emoji badge next to each room member who has set a status,
 so that I know their availability at a glance without asking.
 ```
-## US-7: Hover to see full status details 
+
+## US-7: Hover to see full status details
 ```
-As a user, I can hover over (or focus on) a status emoji to see a tooltip showing the full message and duration, 
+As a user,
+I can hover over (or focus on) a status emoji to see a tooltip showing the full message and duration,
 so that I get detailed context without navigating away.
 ```
-## US-8: Clear my status 
+
+## US-8: Clear my status
 ```
-As a user, I can clear my current status from the flyout menu, 
+As a user,
+I can clear my current status from the flyout menu,
 so that I can remove it before it auto-expires if my situation changes.
 ```
-## US-9: Status persists across sessions 
+
+## US-9: Status syncs via MSC4426
 ```
-As a user, 
-my status survives page refreshes and app restarts (while still active), 
-so that I don't lose it after reloading Element.
+As a user,
+my status is stored on the Matrix homeserver via extended profiles,
+so that it's visible to other users across all my rooms and survives page refreshes.
 ```
-## US-10: Status auto-expires 
+
+## US-10: Status auto-expires
 ```
-As a user, my status automatically disappears when its duration ends, 
+As a user,
+my status automatically disappears when its duration ends (client-side timer clears it on the server),
 so that stale "In a meeting" statuses don't persist after the meeting is over.
 ```
-## US-11: Use the feature in my own language 
+
+## US-11: Automatic call status
 ```
-As a user, 
-I can see the status UI in my preferred language (English, German, French, Spanish, or Japanese), 
+As a user,
+when I join an Element Call, my status automatically shows "📞 On a call",
+so that others know I'm unavailable without me setting it manually.
+```
+
+## US-12: Use the feature in my own language
+```
+As a user,
+I can see the status UI in my preferred language (English, German, French, Spanish, or Japanese),
 so that the feature is accessible to our international team.
 ```
-## US-12: Navigate the status picker with keyboard only 
+
+## US-13: Navigate the status picker with keyboard only
 ```
-As a user who relies on keyboard navigation, 
-I can use arrow keys to browse emojis, Enter/Space to select, Escape to close, and Tab to move between fields, 
+As a user who relies on keyboard navigation,
+I can use arrow keys to browse emojis, Enter/Space to select, Escape to close, and Tab to move between fields,
 so that the feature is fully accessible without a mouse.
 ```
-## US-13: Understand status information via screen reader 
+
+## US-14: Understand status information via screen reader
 ```
-As a user with a screen reader, 
-I hear meaningful labels for emojis, status states, and tooltips via ARIA attributes, 
+As a user with a screen reader,
+I hear meaningful labels for emojis, status states, and tooltips via ARIA attributes,
 so that I have equal access to status information.
 ```
-# Design elements
-The emojis used (✅, 🔴, ⛔, 🕐, 🏖️, 📅, 🍽️, 🏠, 🚗, 🤒, 📵, 💻) are Unicode characters. They're defined in the Unicode Standard and are free to use by anyone.
 
-However, the rendering of those characters varies by platform:
-- Windows renders them using Segoe UI Emoji (Microsoft's design)
-- macOS/iOS renders them using Apple Color Emoji (Apple's design)
-- Android renders them using Noto Color Emoji (Google's design)
-- Linux typically uses Noto or Twitter's Twemoji
+---
 
-The Unicode codepoints themselves are open standard.  This is the same thing every messaging app does (Slack, Teams, Discord, WhatsApp all embed Unicode emoji characters in text).
+# Design Elements
 
-If you wanted cross-platform visual consistency (same look everywhere), you could bundle an open-source emoji set like:
-- Twemoji (Twitter/X) — CC-BY 4.0 license
-- Noto Color Emoji (Google) — Apache 2.0 license
-- OpenMoji — CC-BY-SA 4.0 license
+The emojis used (✅, 🔴, ⛔, 🕐, 🏖️, 📅, 🍽️, 🏠, 🚗, 🤒, 📵, 💻) are Unicode characters defined in the open Unicode Standard. Rendering varies by platform (Segoe UI Emoji on Windows, Apple Color Emoji on macOS, Noto on Android/Linux).
 
-But for a feature targeting Element Desktop (which runs on Electron/Chromium), native Unicode emoji rendering is the standard approach and what other chat apps do.
+For cross-platform visual consistency, you could bundle:
+- **Twemoji** (Twitter/X) — CC-BY 4.0
+- **Noto Color Emoji** (Google) — Apache 2.0
+- **OpenMoji** — CC-BY-SA 4.0
 
-# Jest Tests : 86 tests
+Element Desktop (Electron/Chromium) uses native Unicode rendering, which is the standard approach.
 
-The repo provides 86 test cases covering utility logic, React hooks, component rendering, keyboard accessibility, i18n, and security validation.
+---
 
-## statusUtils.test.ts (22 tests)
+# Tests
 
-- isStatusActive — validates "always" returns true, future "until" returns true, past "until" returns false, "range" within/before/after boundaries
-- isValidUserStatus — accepts valid statuses (always/until/range), rejects null, undefined, missing emoji, empty emoji, emoji too long, text too long, invalid dates, unknown duration types
-- serializeStatus/deserializeStatus — round-trips all three duration types, handles special characters (pipes, quotes, HTML), strips bidi/control characters, rejects empty strings, malformed JSON, oversized payloads, missing -fields, invalid dates, range with end before start
-- formatDuration — formats "always", formats "until" with today's date, accepts a custom translation function
+Tests need to be updated to match the MSC4426 refactor. The test architecture covers:
 
-## useUserStatus.test.ts (9 tests)
+## statusUtils.test.ts
+- `validateUserStatus` — accepts valid `{ emoji, text }`, rejects missing fields, enforces single grapheme, truncates oversized text
+- `validateMCallStatus` — accepts valid call status, rejects malformed data
+- `userStatusFromProfile` — custom status takes precedence over call status
+- `userStatusTextWithinMaxLength` — UTF-8 byte length validation
+- `extractFirstGrapheme` — Intl.Segmenter grapheme extraction
+- `isStatusActive` — duration expiry logic (always/until/range)
+- `sanitizeText` — strips control chars, bidi overrides
+- `formatDuration` — i18n-aware duration formatting
 
-- Returns null on empty localStorage
-- Sets status and persists to localStorage
-- Clears status and removes from localStorage
-- Trims text and enforces 280 char max on save
-- Restores active status from localStorage on mount
-- Discards expired status on mount
-- Rejects malformed JSON in localStorage
-- Rejects invalid shape in localStorage
-- Rejects oversized localStorage data
+## useUserStatus.test.ts
+- Fetches initial status from server on mount
+- Sets status via `setExtendedProfileProperty`
+- Clears status on server and locally
+- Auto-clears when duration expires
+- Reacts to real-time profile update events
+- Handles server errors gracefully
+- Validates single-grapheme emoji before saving
+- Enforces 256-byte UTF-8 text limit
 
-## StatusPicker.test.tsx (12 tests)
+## StatusPicker.test.tsx
+- Renders dialog with correct i18n title
+- Emoji selection updates preview
+- Text input with character count
+- Duration picker integration
+- Save/Clear/Close callbacks
+- Keyboard navigation (Escape, Enter)
+- Locale switching
 
-- Renders dialog with correct title
-- Shows placeholder when no emoji selected
-- Selects emoji and updates preview
-- Fills text input with default text on emoji select
-- Allows typing custom status text
-- Shows character count (280)
-- Calls onSave with correct emoji/text/duration
-- Disables Save when no emoji selected
-- Shows/hides Clear button based on current status
-- Calls onClear + onClose on clear
-- Calls onClose on Escape key
-- Renders in German locale
+## EmojiGrid.test.tsx
+- ARIA grid structure
+- Keyboard navigation (arrows, Enter, Space)
+- Roving tabindex
+- Selection state
 
-## EmojiGrid.test.tsx (12 tests)
+## DurationPicker.test.tsx
+- Type switching (always/until/range)
+- Conditional time inputs
+- i18n labels
 
-- Renders all 12 preset buttons
-- Has correct ARIA grid/row/gridcell structure
-- Marks selected emoji with aria-pressed=true
-- Marks others with aria-pressed=false
-- Calls onSelect on click
-- Arrow key navigation (right, left, down)
-- Enter and Space select the focused emoji
-- Boundary clamping (can't go before first or past last)
-- Roving tabindex (only one tab stop at a time)
+## StatusDisplay.test.tsx
+- Renders both `UserStatus` and `UserStatusWithDuration`
+- Tooltip with/without duration info
+- Accessibility labels
+- Size variants
 
-## DurationPicker.test.tsx (9 tests)
-
-- Renders with "always" selected
-- Shows legend text
-- Hides time inputs for "always"
-- Shows end time input for "until"
-- Shows start + end inputs for "range"
-- Calls onChange with correct type when switching between modes
-- Renders in French locale
-
-## StatusDisplay.test.tsx (11 tests)
-
-- Renders emoji
-- Correct aria-label with status text
-- Falls back to emoji in aria-label when text empty
-- No tooltip by default
-- Shows tooltip on mouseEnter and focus
-- Tooltip shows duration info
-- Tooltip shows "No message" when text empty
-- Hides tooltip when showTooltip=false
-- Applies size CSS class
-- Renders in Spanish locale
-- Emoji is focusable (tabIndex=0)
-
-## i18n.test.tsx (11 tests)
-
-- English, German, French, Spanish, Japanese translations all work
-- {{param}} interpolation works in all locales
-- Falls back to key string when translation missing
-- Dynamic locale switching (EN→DE, DE→FR)
-- Throws when useTranslation used outside provider
-- Validates all 12 emoji keys are translated in all 5 locales (60 assertions)
+## i18n.test.tsx
+- All 5 locales
+- Interpolation
+- Dynamic switching
+- Fallback behavior

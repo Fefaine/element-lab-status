@@ -1,16 +1,21 @@
 import { useCallback, useRef, useState } from "react";
-import { UserStatus } from "../../types/status";
+import { UserStatus, UserStatusWithDuration } from "../../types/status";
 import { formatDuration } from "../../utils/statusUtils";
 import { useTranslation } from "../../i18n";
 import "./StatusDisplay.css";
 
 interface StatusDisplayProps {
-    /** The user's current status */
-    status: UserStatus;
+    /** The user's current status (may or may not have duration info) */
+    status: UserStatus | UserStatusWithDuration;
     /** Size variant for the display */
     size?: "small" | "medium" | "large";
     /** Whether to show the tooltip on hover */
     showTooltip?: boolean;
+}
+
+/** Type guard to check if status has duration metadata */
+function hasDuration(status: UserStatus | UserStatusWithDuration): status is UserStatusWithDuration {
+    return "duration" in status;
 }
 
 /**
@@ -59,9 +64,11 @@ export function StatusDisplay({ status, size = "medium", showTooltip = true }: S
                     <span className="status-display__tooltip-text">
                         {status.text || t("statusDisplay.noMessage")}
                     </span>
-                    <span className="status-display__tooltip-duration">
-                        {formatDuration(status.duration, t)}
-                    </span>
+                    {hasDuration(status) && (
+                        <span className="status-display__tooltip-duration">
+                            {formatDuration(status.duration, t)}
+                        </span>
+                    )}
                 </span>
             )}
         </span>
