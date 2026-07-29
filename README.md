@@ -4,6 +4,19 @@ Experimental UI for Element's user status feature, extending the official MSC442
 
 This is a standalone React prototype that hooks into Element's MSC4426 architecture via an `IMatrixClient` interface. Swap the included `MockMatrixClient` (localStorage-backed) for the real `MatrixClient` from `matrix-js-sdk` to run inside Element.
 
+## Attribution
+
+The MSC4426 protocol integration code (`statusUtils.ts`, `useUserStatus.ts`) is a re-implementation of patterns from [element-hq/element-web](https://github.com/element-hq/element-web) (PR [#32991](https://github.com/element-hq/element-web/pull/32991) by @Half-Shot and @dbkr). The validation logic, API call patterns, and data shapes are derived from their AGPL-3.0 / GPL-3.0 licensed work. Specifically:
+
+- `validateUserStatus`, `validateMCallStatus`, `userStatusFromProfile` — mirror `utils/userStatus.ts`
+- `fetchUserStatus`, `setUserStatusOnServer`, `clearUserStatusOnServer`, `setUserOnCall` — mirror server interaction patterns
+- `userStatusTextWithinMaxLength`, `extractFirstGrapheme` — mirror their validation approach
+- `useUserStatus` hook structure — mirrors `hooks/useUserStatus.ts`
+
+The UI components (StatusPicker, EmojiGrid, DurationPicker, StatusDisplay), i18n system, duration/expiry feature, accessibility implementation, and CSS are original work.
+
+If contributing upstream, this code would fall under Element's [CLA](https://cla-assistant.io/element-hq/element-web) and the repository's AGPL-3.0 license.
+
 ## Architecture
 
 ```
