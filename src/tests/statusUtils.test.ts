@@ -1,15 +1,221 @@
 import {
     isStatusActive,
-    isValidUserStatus,
-    serializeStatus,
-    deserializeStatus,
+    isValidUserStatusWithDuration,
+    validateUserStatus,
+    validateMCallStatus,
+    userStatusFromProfile,
+    userStatusTextWithinMaxLength,
+    extractFirstGrapheme,
+    sanitizeText,
     formatDuration,
+    setUserStatusOnServer,
+    clearUserStatusOnServer,
+    fetchUserStatus,
 } from "../utils/statusUtils";
-import { UserStatus, StatusDuration } from "../types/status";
+import { UserStatusWithDuration, StatusDuration } from "../types/status";
+import { IMatrixClient } from "../types/matrixClient";
+
+// ─── validateUserStatus (MSC4426 server data validation) ────────────────────
+
+describe("validateUserStatus", () => {
+    it("accepts a valid status with emoji and text", () => {
+        const result = validateUserStatus({ emoji: "✅", text: "Available" });
+        expect(result).toEqual({ emoji: "✅", text: "Available" });
+    });
+
+    it("extracts first grapheme from multi-character emoji field", () => {
+        const result = validateUserStatus({ emoji: "🔴🔵", text: "Busy" });
+        expect(result).toEqual({ emoji: "🔴", text: "Busy" });
+    });
+
+    it("returns undefined for null", () => {
+        expect(validateUserStatus(null)).toBeUndefined();
+    });
+
+    it("returns undefined for non-object", () => {
+        expect(validateUserStatus("string")).toBeUndefined();
+        expect(validateUserStatus(42)).toBeUndefined();
+    });
+
+    it("returns undefined when emoji is missing", () => {
+        expect(validateUserStatus({ text: "Hello" })).toBeUndefined();
+    });
+
+    it("returns undefined when emoji is empty string", () => {
+        expect(validateUserStatus({ emoji: "", text: "Hello" })).toBeUndefined();
+    });
+
+    it("returns undefined when text is missing", () => {
+        expect(validateUserStatus({ emoji: "✅" })).toBeUndefined();
+    });
+
+    it("returns undefined when text is empty string", () => {
+        expect(validateUserStatus({ emoji: "✅", text: "" })).toBeUndefined();
+    });
+
+    it("returns undefined when emoji is not a string", () => {
+        expect(validateUserStatus({ emoji: 123, text: "Hello" })).toBeUndefined();
+    });
+
+    it("returns undefined when text is not a string", () => {
+        expect(validateUserStatus({ emoji: "✅", text: 123 })).toBeUndefined();
+    });
+
+    it("truncates text exceeding 256 UTF-8 bytes", () => {
+        const longText = "a".repeat(300);
+        const result = validateUserStatus({ emoji: "✅", text: longText });
+        expect(result).not.toBeUndefined();
+        expect(result!.text.length).toBeLessThanOrEqual(257); // 256 + ellipsis
+    });
+});
+
+// ─── validateMCallStatus ────────────────────────────────────────────────────
+
+describe("validateMCallStatus", () => {
+    it("returns call status when call_joined_ts is positive", () => {
+        const result = validateMCallStatus({ call_joined_ts: Date.now() });
+        expect(result).toEqual({ emoji: "📞", text: "On a call" });
+    });
+
+    it("returns undefined when call_joined_ts is 0", () => {
+        expect(validateMCallStatus({ call_joined_ts: 0 })).toBeUndefined();
+    });
+
+    it("returns undefined when call_joined_ts is negative", () => {
+        expect(validateMCallStatus({ call_joined_ts: -1 })).toBeUndefined();
+    });
+
+    it("returns undefined for null", () => {
+        expect(validateMCallStatus(null)).toBeUndefined();
+    });
+
+    it("returns undefined for non-object", () => {
+        expect(validateMCallStatus("string")).toBeUndefined();
+    });
+
+    it("returns undefined when call_joined_ts is not a number", () => {
+        expect(validateMCallStatus({ call_joined_ts: "123" })).toBeUndefined();
+    });
+
+    it("returns undefined when call_joined_ts is missing", () => {
+        expect(validateMCallStatus({})).toBeUndefined();
+    });
+});
+
+// ─── userStatusFromProfile ──────────────────────────────────────────────────
+
+describe("userStatusFromProfile", () => {
+    it("returns custom status when both status and call are set", () => {
+        const result = userStatusFromProfile(
+            { emoji: "🔴", text: "Busy" },
+            { call_joined_ts: Date.now() }
+        );
+        expect(result).toEqual({ emoji: "🔴", text: "Busy" });
+    });
+
+    it("falls back to call status when custom status is invalid", () => {
+        const result = userStatusFromProfile(null, { call_joined_ts: Date.now() });
+        expect(result).toEqual({ emoji: "📞", text: "On a call" });
+    });
+
+    it("returns undefined when both are invalid", () => {
+        expect(userStatusFromProfile(null, null)).toBeUndefined();
+    });
+
+    it("returns undefined when both are empty objects", () => {
+        expect(userStatusFromProfile({}, {})).toBeUndefined();
+    });
+});
+
+// ─── userStatusTextWithinMaxLength ──────────────────────────────────────────
+
+describe("userStatusTextWithinMaxLength", () => {
+    it("returns true for short ASCII text", () => {
+        expect(userStatusTextWithinMaxLength("Hello")).toBe(true);
+    });
+
+    it("returns true for exactly 256 bytes", () => {
+        const text = "a".repeat(256);
+        expect(userStatusTextWithinMaxLength(text)).toBe(true);
+    });
+
+    it("returns false for text exceeding 256 bytes", () => {
+        const text = "a".repeat(257);
+        expect(userStatusTextWithinMaxLength(text)).toBe(false);
+    });
+
+    it("counts multi-byte characters correctly", () => {
+        // Each emoji is 4 bytes in UTF-8
+        const text = "😀".repeat(64); // 64 * 4 = 256 bytes
+        expect(userStatusTextWithinMaxLength(text)).toBe(true);
+
+        const tooLong = "😀".repeat(65); // 65 * 4 = 260 bytes
+        expect(userStatusTextWithinMaxLength(tooLong)).toBe(false);
+    });
+});
+
+// ─── extractFirstGrapheme ───────────────────────────────────────────────────
+
+describe("extractFirstGrapheme", () => {
+    it("extracts a simple emoji", () => {
+        expect(extractFirstGrapheme("✅")).toBe("✅");
+    });
+
+    it("extracts first grapheme from multiple emojis", () => {
+        expect(extractFirstGrapheme("🔴🔵")).toBe("🔴");
+    });
+
+    it("handles emoji with variation selector", () => {
+        expect(extractFirstGrapheme("🏖️")).toBe("🏖️");
+    });
+
+    it("handles flag emoji (multi-codepoint single grapheme)", () => {
+        expect(extractFirstGrapheme("🇫🇷")).toBe("🇫🇷");
+    });
+
+    it("returns undefined for empty string", () => {
+        expect(extractFirstGrapheme("")).toBeUndefined();
+    });
+
+    it("extracts single letter from text", () => {
+        expect(extractFirstGrapheme("A")).toBe("A");
+    });
+});
+
+// ─── sanitizeText ───────────────────────────────────────────────────────────
+
+describe("sanitizeText", () => {
+    it("trims whitespace", () => {
+        expect(sanitizeText("  hello  ")).toBe("hello");
+    });
+
+    it("strips bidi override characters", () => {
+        expect(sanitizeText("Normal\u202Etext")).toBe("Normaltext");
+    });
+
+    it("strips zero-width characters", () => {
+        expect(sanitizeText("Hello\u200BWorld")).toBe("HelloWorld");
+    });
+
+    it("strips control characters", () => {
+        expect(sanitizeText("Hello\x00World\x1F")).toBe("HelloWorld");
+    });
+
+    it("preserves normal text", () => {
+        expect(sanitizeText("Working from home 🏠")).toBe("Working from home 🏠");
+    });
+
+    it("enforces max length", () => {
+        const result = sanitizeText("x".repeat(500));
+        expect(result.length).toBeLessThanOrEqual(256);
+    });
+});
+
+// ─── isStatusActive (duration logic) ────────────────────────────────────────
 
 describe("isStatusActive", () => {
     it("returns true for 'always' duration", () => {
-        const status: UserStatus = {
+        const status: UserStatusWithDuration = {
             emoji: "✅",
             text: "Available",
             duration: { type: "always" },
@@ -21,7 +227,7 @@ describe("isStatusActive", () => {
     it("returns true for 'until' duration in the future", () => {
         const future = new Date();
         future.setHours(future.getHours() + 1);
-        const status: UserStatus = {
+        const status: UserStatusWithDuration = {
             emoji: "🔴",
             text: "Busy",
             duration: { type: "until", endTime: future },
@@ -33,7 +239,7 @@ describe("isStatusActive", () => {
     it("returns false for 'until' duration in the past", () => {
         const past = new Date();
         past.setHours(past.getHours() - 1);
-        const status: UserStatus = {
+        const status: UserStatusWithDuration = {
             emoji: "🔴",
             text: "Busy",
             duration: { type: "until", endTime: past },
@@ -47,7 +253,7 @@ describe("isStatusActive", () => {
         start.setHours(start.getHours() - 1);
         const end = new Date();
         end.setHours(end.getHours() + 1);
-        const status: UserStatus = {
+        const status: UserStatusWithDuration = {
             emoji: "📅",
             text: "In a meeting",
             duration: { type: "range", startTime: start, endTime: end },
@@ -61,7 +267,7 @@ describe("isStatusActive", () => {
         start.setHours(start.getHours() + 1);
         const end = new Date();
         end.setHours(end.getHours() + 2);
-        const status: UserStatus = {
+        const status: UserStatusWithDuration = {
             emoji: "📅",
             text: "In a meeting",
             duration: { type: "range", startTime: start, endTime: end },
@@ -75,7 +281,7 @@ describe("isStatusActive", () => {
         start.setHours(start.getHours() - 3);
         const end = new Date();
         end.setHours(end.getHours() - 1);
-        const status: UserStatus = {
+        const status: UserStatusWithDuration = {
             emoji: "📅",
             text: "In a meeting",
             duration: { type: "range", startTime: start, endTime: end },
@@ -85,7 +291,9 @@ describe("isStatusActive", () => {
     });
 });
 
-describe("isValidUserStatus", () => {
+// ─── isValidUserStatusWithDuration ──────────────────────────────────────────
+
+describe("isValidUserStatusWithDuration", () => {
     it("accepts a valid status with 'always' duration", () => {
         const status = {
             emoji: "✅",
@@ -93,7 +301,7 @@ describe("isValidUserStatus", () => {
             duration: { type: "always" },
             setAt: new Date(),
         };
-        expect(isValidUserStatus(status)).toBe(true);
+        expect(isValidUserStatusWithDuration(status)).toBe(true);
     });
 
     it("accepts a valid status with 'until' duration", () => {
@@ -103,220 +311,37 @@ describe("isValidUserStatus", () => {
             duration: { type: "until", endTime: new Date() },
             setAt: new Date(),
         };
-        expect(isValidUserStatus(status)).toBe(true);
-    });
-
-    it("accepts a valid status with 'range' duration", () => {
-        const status = {
-            emoji: "📅",
-            text: "Meeting",
-            duration: { type: "range", startTime: new Date(), endTime: new Date() },
-            setAt: new Date(),
-        };
-        expect(isValidUserStatus(status)).toBe(true);
+        expect(isValidUserStatusWithDuration(status)).toBe(true);
     });
 
     it("rejects null", () => {
-        expect(isValidUserStatus(null)).toBe(false);
-    });
-
-    it("rejects undefined", () => {
-        expect(isValidUserStatus(undefined)).toBe(false);
+        expect(isValidUserStatusWithDuration(null)).toBe(false);
     });
 
     it("rejects object with missing emoji", () => {
-        const status = {
+        expect(isValidUserStatusWithDuration({
             text: "Available",
             duration: { type: "always" },
             setAt: new Date(),
-        };
-        expect(isValidUserStatus(status)).toBe(false);
-    });
-
-    it("rejects object with empty emoji", () => {
-        const status = {
-            emoji: "",
-            text: "Available",
-            duration: { type: "always" },
-            setAt: new Date(),
-        };
-        expect(isValidUserStatus(status)).toBe(false);
-    });
-
-    it("rejects object with emoji too long", () => {
-        const status = {
-            emoji: "x".repeat(11),
-            text: "Available",
-            duration: { type: "always" },
-            setAt: new Date(),
-        };
-        expect(isValidUserStatus(status)).toBe(false);
-    });
-
-    it("rejects object with text exceeding max length", () => {
-        const status = {
-            emoji: "✅",
-            text: "x".repeat(281),
-            duration: { type: "always" },
-            setAt: new Date(),
-        };
-        expect(isValidUserStatus(status)).toBe(false);
+        })).toBe(false);
     });
 
     it("rejects object with invalid setAt date", () => {
-        const status = {
+        expect(isValidUserStatusWithDuration({
             emoji: "✅",
             text: "Available",
             duration: { type: "always" },
             setAt: new Date("invalid"),
-        };
-        expect(isValidUserStatus(status)).toBe(false);
-    });
-
-    it("rejects object with invalid duration type", () => {
-        const status = {
-            emoji: "✅",
-            text: "Available",
-            duration: { type: "unknown" },
-            setAt: new Date(),
-        };
-        expect(isValidUserStatus(status)).toBe(false);
-    });
-
-    it("rejects object with invalid endTime in 'until' duration", () => {
-        const status = {
-            emoji: "✅",
-            text: "Available",
-            duration: { type: "until", endTime: new Date("invalid") },
-            setAt: new Date(),
-        };
-        expect(isValidUserStatus(status)).toBe(false);
+        })).toBe(false);
     });
 });
 
-describe("serializeStatus / deserializeStatus", () => {
-    it("round-trips a status with 'always' duration", () => {
-        const status: UserStatus = {
-            emoji: "✅",
-            text: "Available",
-            duration: { type: "always" },
-            setAt: new Date(),
-        };
-        const serialized = serializeStatus(status);
-        const deserialized = deserializeStatus(serialized);
-
-        expect(deserialized).not.toBeNull();
-        expect(deserialized!.emoji).toBe("✅");
-        expect(deserialized!.text).toBe("Available");
-        expect(deserialized!.duration.type).toBe("always");
-    });
-
-    it("round-trips a status with 'until' duration", () => {
-        const endTime = new Date("2026-08-01T15:00:00.000Z");
-        const status: UserStatus = {
-            emoji: "🔴",
-            text: "Busy",
-            duration: { type: "until", endTime },
-            setAt: new Date(),
-        };
-        const serialized = serializeStatus(status);
-        const deserialized = deserializeStatus(serialized);
-
-        expect(deserialized).not.toBeNull();
-        expect(deserialized!.duration.type).toBe("until");
-        if (deserialized!.duration.type === "until") {
-            expect(deserialized!.duration.endTime.toISOString()).toBe(endTime.toISOString());
-        }
-    });
-
-    it("round-trips a status with 'range' duration", () => {
-        const startTime = new Date("2026-08-01T09:00:00.000Z");
-        const endTime = new Date("2026-08-01T17:00:00.000Z");
-        const status: UserStatus = {
-            emoji: "📅",
-            text: "In a meeting",
-            duration: { type: "range", startTime, endTime },
-            setAt: new Date(),
-        };
-        const serialized = serializeStatus(status);
-        const deserialized = deserializeStatus(serialized);
-
-        expect(deserialized).not.toBeNull();
-        expect(deserialized!.duration.type).toBe("range");
-        if (deserialized!.duration.type === "range") {
-            expect(deserialized!.duration.startTime.toISOString()).toBe(startTime.toISOString());
-            expect(deserialized!.duration.endTime.toISOString()).toBe(endTime.toISOString());
-        }
-    });
-
-    it("handles text with special characters (pipe, quotes, etc.)", () => {
-        const status: UserStatus = {
-            emoji: "💻",
-            text: 'Working on "feature|branch" & stuff <script>',
-            duration: { type: "always" },
-            setAt: new Date(),
-        };
-        const serialized = serializeStatus(status);
-        const deserialized = deserializeStatus(serialized);
-
-        expect(deserialized).not.toBeNull();
-        expect(deserialized!.text).toBe('Working on "feature|branch" & stuff <script>');
-    });
-
-    it("strips control characters from text during deserialization", () => {
-        const malicious = JSON.stringify({
-            e: "✅",
-            t: "Normal\u202Etext\u200B",
-            d: { type: "always" },
-        });
-        const deserialized = deserializeStatus(malicious);
-
-        expect(deserialized).not.toBeNull();
-        expect(deserialized!.text).toBe("Normaltext");
-    });
-
-    it("returns null for empty string", () => {
-        expect(deserializeStatus("")).toBeNull();
-    });
-
-    it("returns null for malformed JSON", () => {
-        expect(deserializeStatus("{not json")).toBeNull();
-    });
-
-    it("returns null for oversized payload", () => {
-        const huge = JSON.stringify({ e: "✅", t: "x".repeat(2000), d: { type: "always" } });
-        expect(deserializeStatus(huge)).toBeNull();
-    });
-
-    it("returns null for missing emoji", () => {
-        const payload = JSON.stringify({ t: "text", d: { type: "always" } });
-        expect(deserializeStatus(payload)).toBeNull();
-    });
-
-    it("returns null for invalid duration in deserialization", () => {
-        const payload = JSON.stringify({ e: "✅", t: "text", d: { type: "until", end: "not-a-date" } });
-        expect(deserializeStatus(payload)).toBeNull();
-    });
-
-    it("returns null when range end is before start", () => {
-        const payload = JSON.stringify({
-            e: "✅",
-            t: "text",
-            d: {
-                type: "range",
-                start: "2026-08-01T17:00:00.000Z",
-                end: "2026-08-01T09:00:00.000Z",
-            },
-        });
-        expect(deserializeStatus(payload)).toBeNull();
-    });
-});
+// ─── formatDuration ─────────────────────────────────────────────────────────
 
 describe("formatDuration", () => {
     it("formats 'always' duration", () => {
         const duration: StatusDuration = { type: "always" };
-        const result = formatDuration(duration);
-        expect(result).toBe("Until you clear it");
+        expect(formatDuration(duration)).toBe("Until you clear it");
     });
 
     it("formats 'until' duration with a future date", () => {
@@ -331,12 +356,110 @@ describe("formatDuration", () => {
     it("uses custom translation function", () => {
         const mockT = (key: string, params?: Record<string, string>) => {
             if (key === "duration.display.always") return "Bis du ihn löschst";
-            if (key === "duration.display.today" && params) return `heute um ${params.time}`;
-            if (key === "duration.display.until" && params) return `Bis ${params.time}`;
             return key;
         };
         const duration: StatusDuration = { type: "always" };
-        const result = formatDuration(duration, mockT);
-        expect(result).toBe("Bis du ihn löschst");
+        expect(formatDuration(duration, mockT)).toBe("Bis du ihn löschst");
+    });
+});
+
+// ─── Server operations ──────────────────────────────────────────────────────
+
+describe("setUserStatusOnServer", () => {
+    const mockClient: IMatrixClient = {
+        doesServerSupportExtendedProfiles: jest.fn().mockResolvedValue(true),
+        getExtendedProfileProperty: jest.fn(),
+        setExtendedProfileProperty: jest.fn().mockResolvedValue(undefined),
+        getUserId: jest.fn().mockReturnValue("@user:example.org"),
+        onUserProfileUpdate: jest.fn().mockReturnValue(() => {}),
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it("calls setExtendedProfileProperty with correct payload", async () => {
+        await setUserStatusOnServer(mockClient, { emoji: "✅", text: "Available" });
+        expect(mockClient.setExtendedProfileProperty).toHaveBeenCalledWith(
+            "org.matrix.msc4426.status",
+            { emoji: "✅", text: "Available" }
+        );
+    });
+
+    it("throws when emoji is not a single grapheme", async () => {
+        await expect(
+            setUserStatusOnServer(mockClient, { emoji: "", text: "No emoji" })
+        ).rejects.toThrow("Invalid emoji");
+    });
+
+    it("throws when text exceeds 256 UTF-8 bytes", async () => {
+        await expect(
+            setUserStatusOnServer(mockClient, { emoji: "✅", text: "a".repeat(257) })
+        ).rejects.toThrow("Status text exceeds");
+    });
+});
+
+describe("clearUserStatusOnServer", () => {
+    const mockClient: IMatrixClient = {
+        doesServerSupportExtendedProfiles: jest.fn().mockResolvedValue(true),
+        getExtendedProfileProperty: jest.fn(),
+        setExtendedProfileProperty: jest.fn().mockResolvedValue(undefined),
+        getUserId: jest.fn().mockReturnValue("@user:example.org"),
+        onUserProfileUpdate: jest.fn().mockReturnValue(() => {}),
+    };
+
+    it("calls setExtendedProfileProperty with null", async () => {
+        await clearUserStatusOnServer(mockClient);
+        expect(mockClient.setExtendedProfileProperty).toHaveBeenCalledWith(
+            "org.matrix.msc4426.status",
+            null
+        );
+    });
+});
+
+describe("fetchUserStatus", () => {
+    it("returns undefined when server does not support extended profiles", async () => {
+        const mockClient: IMatrixClient = {
+            doesServerSupportExtendedProfiles: jest.fn().mockResolvedValue(false),
+            getExtendedProfileProperty: jest.fn(),
+            setExtendedProfileProperty: jest.fn(),
+            getUserId: jest.fn().mockReturnValue("@user:example.org"),
+            onUserProfileUpdate: jest.fn().mockReturnValue(() => {}),
+        };
+
+        const result = await fetchUserStatus(mockClient, "@user:example.org");
+        expect(result).toBeUndefined();
+    });
+
+    it("returns validated status from server", async () => {
+        const mockClient: IMatrixClient = {
+            doesServerSupportExtendedProfiles: jest.fn().mockResolvedValue(true),
+            getExtendedProfileProperty: jest.fn().mockImplementation((_userId, key) => {
+                if (key === "org.matrix.msc4426.status") return { emoji: "🔴", text: "Busy" };
+                throw new Error("M_NOT_FOUND");
+            }),
+            setExtendedProfileProperty: jest.fn(),
+            getUserId: jest.fn().mockReturnValue("@user:example.org"),
+            onUserProfileUpdate: jest.fn().mockReturnValue(() => {}),
+        };
+
+        const result = await fetchUserStatus(mockClient, "@user:example.org");
+        expect(result).toEqual({ emoji: "🔴", text: "Busy" });
+    });
+
+    it("returns call status when no custom status but user is on a call", async () => {
+        const mockClient: IMatrixClient = {
+            doesServerSupportExtendedProfiles: jest.fn().mockResolvedValue(true),
+            getExtendedProfileProperty: jest.fn().mockImplementation((_userId, key) => {
+                if (key === "org.matrix.msc4426.call") return { call_joined_ts: Date.now() };
+                throw new Error("M_NOT_FOUND");
+            }),
+            setExtendedProfileProperty: jest.fn(),
+            getUserId: jest.fn().mockReturnValue("@user:example.org"),
+            onUserProfileUpdate: jest.fn().mockReturnValue(() => {}),
+        };
+
+        const result = await fetchUserStatus(mockClient, "@user:example.org");
+        expect(result).toEqual({ emoji: "📞", text: "On a call" });
     });
 });

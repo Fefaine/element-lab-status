@@ -2,12 +2,12 @@ import React from "react";
 import { screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StatusPicker } from "../components/StatusPicker";
-import { UserStatus } from "../types/status";
+import { UserStatusWithDuration } from "../types/status";
 import { renderWithI18n } from "./helpers/renderWithI18n";
 
 describe("StatusPicker", () => {
     const defaultProps = {
-        currentStatus: null,
+        currentStatus: null as UserStatusWithDuration | null,
         onSave: jest.fn(),
         onClear: jest.fn(),
         onClose: jest.fn(),
@@ -57,9 +57,9 @@ describe("StatusPicker", () => {
         expect(input.value).toBe("Working on feature X");
     });
 
-    it("shows character count", () => {
+    it("shows character count (256)", () => {
         renderWithI18n(<StatusPicker {...defaultProps} />);
-        expect(screen.getByText("280")).toBeInTheDocument();
+        expect(screen.getByText("256")).toBeInTheDocument();
     });
 
     it("calls onSave with correct data when Save is clicked", async () => {
@@ -73,10 +73,11 @@ describe("StatusPicker", () => {
         await userEvent.click(saveBtn);
 
         expect(onSave).toHaveBeenCalledTimes(1);
-        const savedStatus: UserStatus = onSave.mock.calls[0][0];
+        const savedStatus: UserStatusWithDuration = onSave.mock.calls[0][0];
         expect(savedStatus.emoji).toBe("✅");
         expect(savedStatus.text).toBe("Available");
         expect(savedStatus.duration.type).toBe("always");
+        expect(savedStatus.setAt).toBeInstanceOf(Date);
     });
 
     it("disables Save button when no emoji is selected", () => {
@@ -86,7 +87,7 @@ describe("StatusPicker", () => {
     });
 
     it("shows Clear button when there is a current status", () => {
-        const currentStatus: UserStatus = {
+        const currentStatus: UserStatusWithDuration = {
             emoji: "✅",
             text: "Available",
             duration: { type: "always" },
@@ -104,7 +105,7 @@ describe("StatusPicker", () => {
     it("calls onClear and onClose when Clear is clicked", async () => {
         const onClear = jest.fn();
         const onClose = jest.fn();
-        const currentStatus: UserStatus = {
+        const currentStatus: UserStatusWithDuration = {
             emoji: "✅",
             text: "Available",
             duration: { type: "always" },
