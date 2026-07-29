@@ -1,0 +1,237 @@
+/* CSS Custom Properties (Element-like dark theme) */
+:root {
+    --bg-page: #0d1117;
+    --bg-surface: #1a1d23;
+    --bg-subtle: #22262e;
+    --bg-hover: #2a2e38;
+    --bg-input: #22262e;
+    --bg-selected: rgba(13, 189, 139, 0.12);
+    --bg-danger-hover: #3d2020;
+    --border-color: #3a3f4b;
+    --text-primary: #e4e8ee;
+    --text-secondary: #8e929a;
+    --accent: #0dbd8b;
+    --accent-hover: #0aa87d;
+    --focus-ring: #0dbd8b;
+    --danger: #ff4b55;
+    --warning: #ff8b3e;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg-page);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+}
+
+.app {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 32px 16px;
+}
+
+.app__header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.app__title {
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 0 4px;
+}
+
+.app__subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.app__subtitle a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.app__subtitle a:hover {
+    text-decoration: underline;
+}
+
+.app__locale-switcher {
+    margin-top: 12px;
+}
+
+.app__locale-select {
+    padding: 6px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.app__locale-select:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.app__main {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+/* Profile Area */
+.profile-area {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--bg-surface);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+}
+
+.profile-area__avatar-container {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.profile-area__avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0dbd8b, #0aa87d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.profile-area__avatar:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 12px rgba(13, 189, 139, 0.3);
+}
+
+.profile-area__avatar:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+}
+
+.profile-area__avatar-initials {
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.profile-area__avatar-container .status-display {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+}
+
+.profile-area__info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.profile-area__name {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.profile-area__status-text {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.profile-area__set-status-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+}
+
+.profile-area__set-status-btn:hover {
+    text-decoration: underline;
+}
+
+.profile-area__set-status-btn:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+.profile-area .status-picker {
+    top: 90px;
+    left: 20px;
+}
+
+/* Member List */
+.member-list {
+    background: var(--bg-surface);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+}
+
+.member-list__title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.member-list__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.member-list__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: background 0.15s;
+}
+
+.member-list__item:hover {
+    background: var(--bg-hover);
+}
+
+.member-list__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.member-list__name {
+    font-size: 14px;
+    flex: 1;
+}

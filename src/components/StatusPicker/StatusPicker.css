@@ -1,0 +1,315 @@
+/* Status Picker Flyout */
+.status-picker {
+    position: absolute;
+    z-index: 1000;
+    width: 360px;
+    max-width: 95vw;
+    background: var(--bg-surface, #1a1d23);
+    border: 1px solid var(--border-color, #3a3f4b);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text-primary, #e4e8ee);
+}
+
+.status-picker__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.status-picker__title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.status-picker__close-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary, #8e929a);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    line-height: 1;
+}
+
+.status-picker__close-btn:hover {
+    background: var(--bg-hover, #2a2e38);
+    color: var(--text-primary, #e4e8ee);
+}
+
+.status-picker__close-btn:focus-visible {
+    outline: 2px solid var(--focus-ring, #0dbd8b);
+    outline-offset: 2px;
+}
+
+/* Preview */
+.status-picker__preview {
+    background: var(--bg-subtle, #22262e);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 16px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+
+.status-picker__preview-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-picker__preview-emoji {
+    font-size: 24px;
+}
+
+.status-picker__preview-text {
+    font-size: 14px;
+    color: var(--text-primary, #e4e8ee);
+}
+
+.status-picker__preview-placeholder {
+    font-size: 14px;
+    color: var(--text-secondary, #8e929a);
+    font-style: italic;
+}
+
+/* Emoji Grid */
+.emoji-grid {
+    margin-bottom: 16px;
+}
+
+.emoji-grid__container {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+}
+
+.emoji-grid__item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+    background: none;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.emoji-grid__item:hover {
+    background: var(--bg-hover, #2a2e38);
+    transform: scale(1.1);
+}
+
+.emoji-grid__item:focus-visible {
+    outline: 2px solid var(--focus-ring, #0dbd8b);
+    outline-offset: 2px;
+}
+
+.emoji-grid__item--selected {
+    background: var(--bg-selected, #0dbd8b20);
+    border-color: var(--accent, #0dbd8b);
+}
+
+/* Text Input */
+.status-picker__text-field {
+    margin-bottom: 16px;
+}
+
+.status-picker__label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary, #8e929a);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-picker__input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.status-picker__input {
+    width: 100%;
+    padding: 10px 50px 10px 12px;
+    background: var(--bg-input, #22262e);
+    border: 1px solid var(--border-color, #3a3f4b);
+    border-radius: 8px;
+    color: var(--text-primary, #e4e8ee);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.status-picker__input:focus {
+    border-color: var(--accent, #0dbd8b);
+}
+
+.status-picker__input::placeholder {
+    color: var(--text-secondary, #8e929a);
+}
+
+.status-picker__char-count {
+    position: absolute;
+    right: 12px;
+    font-size: 12px;
+    color: var(--text-secondary, #8e929a);
+}
+
+.status-picker__char-count--warning {
+    color: var(--warning, #ff8b3e);
+}
+
+/* Duration Picker */
+.duration-picker {
+    border: none;
+    padding: 0;
+    margin: 0 0 16px;
+}
+
+.duration-picker__legend {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary, #8e929a);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.duration-picker__select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-input, #22262e);
+    border: 1px solid var(--border-color, #3a3f4b);
+    border-radius: 8px;
+    color: var(--text-primary, #e4e8ee);
+    font-size: 14px;
+    outline: none;
+    cursor: pointer;
+}
+
+.duration-picker__select:focus {
+    border-color: var(--accent, #0dbd8b);
+}
+
+.duration-picker__time-field {
+    margin-top: 8px;
+}
+
+.duration-picker__label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary, #8e929a);
+    margin-bottom: 4px;
+}
+
+.duration-picker__datetime {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-input, #22262e);
+    border: 1px solid var(--border-color, #3a3f4b);
+    border-radius: 8px;
+    color: var(--text-primary, #e4e8ee);
+    font-size: 13px;
+    outline: none;
+}
+
+.duration-picker__datetime:focus {
+    border-color: var(--accent, #0dbd8b);
+}
+
+.duration-picker__range-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+/* Actions */
+.status-picker__actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.status-picker__btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.status-picker__btn:focus-visible {
+    outline: 2px solid var(--focus-ring, #0dbd8b);
+    outline-offset: 2px;
+}
+
+.status-picker__btn--clear {
+    background: var(--bg-hover, #2a2e38);
+    color: var(--text-primary, #e4e8ee);
+}
+
+.status-picker__btn--clear:hover {
+    background: var(--bg-danger-hover, #3d2020);
+    color: var(--danger, #ff4b55);
+}
+
+.status-picker__btn--save {
+    background: var(--accent, #0dbd8b);
+    color: #fff;
+}
+
+.status-picker__btn--save:hover {
+    background: var(--accent-hover, #0aa87d);
+}
+
+.status-picker__btn--save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Screen reader only utility */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* Responsive */
+@media (max-width: 400px) {
+    .status-picker {
+        width: 100%;
+        border-radius: 12px 12px 0 0;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+    }
+
+    .emoji-grid__container {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    .duration-picker__range-fields {
+        grid-template-columns: 1fr;
+    }
+}
